@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark" translate="no">
+<head>
+  <meta charset="UTF-8">
+  <!-- Sitenin kendi TR/EN seçeneği ve çevirisi olduğu için tarayıcının otomatik çevirisi kapalı -->
+  <meta name="google" content="notranslate">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gökyüzü Takvimi</title>
+  <meta name="description" content="NASA'nın Günün Astronomi Fotoğrafı (APOD) arşivini keşfedin.">
+  <meta name="theme-color" content="#0b0d12">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Tema, sayfa çizilmeden önce uygulanır (açılışta yanıp sönmeyi önler)
+    try {
+      var savedTheme = JSON.parse(localStorage.getItem("apodTheme"));
+      var theme = savedTheme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <!-- Hareketli yıldız arka planı (sadece süs, tıklamaları engellemez) -->
+  <canvas id="starfield" class="starfield" aria-hidden="true"></canvas>
+  <a class="skip-link" href="#apod" data-i18n="skip"></a>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="#" id="brandLink">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Gökyüzü Takvimi</span>
+      </a>
+
+      <nav class="topnav" aria-label="Sections">
+        <button type="button" data-target="sec-feature" data-i18n="navToday"></button>
+        <button type="button" data-target="sec-calendar" data-i18n="navCalendar"></button>
+        <button type="button" data-target="sec-birthday" data-i18n="navBirthday"></button>
+        <button type="button" data-target="sec-favorites" data-i18n="navFavorites"></button>
+        <button type="button" data-target="sec-games" data-i18n="navGames"></button>
+        <button type="button" data-target="sec-archive" data-i18n="navArchive"></button>
+      </nav>
+
+      <div class="top-actions">
+        <button type="button" id="themeBtn" class="icon-btn" aria-label="Theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="tr">TR</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="intro">
+      <p class="eyebrow" data-i18n="eyebrow"></p>
+      <h1 data-i18n="heroTitle"></h1>
+      <p class="lead" data-i18n="heroText"></p>
+    </section>
+
+    <!-- Tarih gezinme çubuğu -->
+    <section id="sec-feature" class="anchor">
+      <nav class="datebar" aria-label="Date navigation">
+        <button type="button" id="prevBtn" class="step step-prev">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          <span class="step-text">
+            <span class="step-label" data-i18n="prev"></span>
+            <span class="step-date" id="prevDate"></span>
+          </span>
+        </button>
+
+        <div class="date-center">
+          <button type="button" id="dateBtn" class="date-btn">
+            <span class="date-weekday" id="dateWeekday"></span>
+            <span class="date-main" id="dateMain"></span>
+            <span class="date-change">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+              <span data-i18n="pickDate"></span>
+            </span>
+          </button>
+          <input type="date" id="datePicker" class="date-input" tabindex="-1" aria-hidden="true">
+        </div>
+
+        <button type="button" id="nextBtn" class="step step-next">
+          <span class="step-text">
+            <span class="step-label" data-i18n="next"></span>
+            <span class="step-date" id="nextDate"></span>
+          </span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </nav>
+
+      <div class="quickbar">
+        <p class="hint" data-i18n="keyHintHtml"></p>
+        <div class="quick-actions">
+          <button type="button" id="todayBtn" class="btn" data-i18n="latest"></button>
+          <button type="button" id="randomBtn" class="btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+            <span data-i18n="random"></span>
+          </button>
+        </div>
+      </div>
+
+      <p id="status" class="status hidden" role="status"></p>
+
+      <!-- Ana fotoğraf -->
+      <article id="apod" class="feature is-loading">
+        <figure class="feature-media" id="mediaWrap">
+          <div id="media" class="media-inner"></div>
+          <button type="button" id="expandBtn" class="media-expand" aria-label="Fullscreen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            <span data-i18n="fullscreen"></span>
+          </button>
+        </figure>
+        <div class="feature-info">
+          <p class="meta">
+            <span id="apodDate"></span>
+            <span id="apodType" class="badge hidden"></span>
+          </p>
+          <h2 id="apodTitle"></h2>
+          <p class="credit" id="apodCredit"></p>
+
+          <div id="trBar" class="trbar hidden">
+            <span id="trStatus"></span>
+            <button type="button" id="trBtn" class="link-btn hidden"></button>
+          </div>
+
+          <p class="explanation" id="apodExplanation"></p>
+
+          <dl class="details" id="details"></dl>
+
+          <div class="actions">
+            <button type="button" id="favBtn" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.4-9.3-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9z"/></svg>
+              <span id="favLabel"></span>
+            </button>
+            <button type="button" id="downloadBtn" class="btn">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+              <span data-i18n="download"></span>
+            </button>
+            <button type="button" id="shareBtn" class="btn">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+              <span data-i18n="share"></span>
+            </button>
+            <a id="nasaLink" class="btn btn-ghost" target="_blank" rel="noopener">
+              <span data-i18n="nasaPage"></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg>
+            </a>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Geçmiş yıllarda bu tarih -->
+    <section class="block reveal">
+      <div class="block-head">
+        <h3 data-i18n="onThisDayTitle"></h3>
+        <p class="muted" id="onThisDayText"></p>
+      </div>
+      <div id="onThisDay" class="grid"></div>
+    </section>
+
+    <!-- Arşiv takvimi -->
+    <section id="sec-calendar" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="calendarTitle"></h3>
+        <div class="cal-nav">
+          <button type="button" id="calPrev" class="icon-btn" aria-label="Previous month">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <label class="cal-month">
+            <span id="calLabel"></span>
+            <input type="month" id="calPicker" aria-label="Month">
+          </label>
+          <button type="button" id="calNext" class="icon-btn" aria-label="Next month">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="calendar">
+        <div class="cal-weekdays" id="calWeekdays"></div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+    </section>
+
+    <!-- Doğum günü -->
+    <section id="sec-birthday" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="birthdayTitle"></h3>
+        <p class="muted" data-i18n="birthdayText"></p>
+      </div>
+      <form id="birthdayForm" class="birthday-form">
+        <label for="birthdayInput" data-i18n="birthdayLabel"></label>
+        <input type="date" id="birthdayInput" class="input" required>
+        <button type="submit" class="btn btn-primary" data-i18n="birthdayButton"></button>
+      </form>
+      <div id="birthdayProgress" class="progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" id="birthdayBar"></div>
+        <span class="progress-text" id="birthdayProgressText"></span>
+      </div>
+      <p id="birthdaySummary" class="muted summary"></p>
+      <div id="birthdayGrid" class="grid"></div>
+    </section>
+
+    <!-- Favoriler -->
+    <section id="sec-favorites" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="favTitle"></h3>
+        <p class="muted" id="favCount"></p>
+      </div>
+      <div id="favorites" class="grid"></div>
+      <p id="noFav" class="empty" data-i18n="noFav"></p>
+    </section>
+    <!-- Oyunlar: yapboz, hafıza kartları, seri ve rozetler -->
+    <section id="sec-games" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="gamesTitle"></h3>
+        <p class="muted" data-i18n="gamesText"></p>
+      </div>
+
+      <div class="progress-panel">
+        <div class="streak-card">
+          <svg class="streak-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3-1-3 0-6 1-9.5z"/></svg>
+          <div>
+            <div class="streak-num" id="streakNum">0</div>
+            <div class="streak-label" data-i18n="streakLabel"></div>
+            <div class="streak-best muted" id="streakBest"></div>
+          </div>
+        </div>
+        <div class="awards-wrap">
+          <div class="awards-head">
+            <span data-i18n="badgesTitle"></span>
+            <span class="muted" id="badgeCount"></span>
+          </div>
+          <div class="awards" id="badges"></div>
+        </div>
+      </div>
+
+      <div class="game-tabs chips" role="tablist" aria-label="Games">
+        <button type="button" class="chip active" role="tab" data-game="puzzle" data-i18n="gamePuzzle"></button>
+        <button type="button" class="chip" role="tab" data-game="memory" data-i18n="gameMemory"></button>
+      </div>
+
+      <!-- Kaydırmalı yapboz -->
+      <div class="game" id="puzzleGame">
+        <div class="game-bar">
+          <div class="game-options">
+            <div class="chips" role="group" aria-label="Mode">
+              <button type="button" class="chip" data-mode="swap" data-i18n="modeSwap"></button>
+              <button type="button" class="chip" data-mode="slide" data-i18n="modeSlide"></button>
+            </div>
+            <div class="chips" role="group" aria-label="Size">
+              <button type="button" class="chip" data-size="3">3 × 3</button>
+              <button type="button" class="chip active" data-size="4">4 × 4</button>
+            </div>
+            <button type="button" class="btn" id="puzzleToday" data-i18n="puzzleToday"></button>
+            <button type="button" class="btn" id="puzzleRandom" data-i18n="puzzleRandom"></button>
+          </div>
+          <div class="game-stats">
+            <span><b id="puzzleMoves">0</b> <span data-i18n="moves"></span></span>
+            <span><b id="puzzleTime">0:00</b></span>
+            <span class="muted" id="puzzleBest"></span>
+          </div>
+        </div>
+        <div class="game-stage">
+          <div class="puzzle-board" id="puzzleBoard" tabindex="0"></div>
+          <div class="game-side">
+            <p class="game-title" id="puzzleTitle"></p>
+            <p class="muted small" id="puzzleHelp"></p>
+            <div class="game-actions">
+              <button type="button" class="btn btn-primary" id="puzzleShuffle" data-i18n="shuffle"></button>
+              <button type="button" class="btn" id="puzzlePeek" data-i18n="peek"></button>
+              <button type="button" class="btn btn-ghost" id="puzzleOpen" data-i18n="openPhoto"></button>
+            </div>
+            <p class="game-win hidden" id="puzzleWin"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hafıza kartları -->
+      <div class="game hidden" id="memoryGame">
+        <div class="game-bar">
+          <div class="game-options">
+            <div class="chips" role="group" aria-label="Level">
+              <button type="button" class="chip active" data-pairs="6" data-i18n="levelEasy"></button>
+              <button type="button" class="chip" data-pairs="8" data-i18n="levelHard"></button>
+            </div>
+            <button type="button" class="btn btn-primary" id="memoryNew" data-i18n="newGame"></button>
+          </div>
+          <div class="game-stats">
+            <span><b id="memoryMoves">0</b> <span data-i18n="moves"></span></span>
+            <span><b id="memoryPairs">0</b> <span data-i18n="pairsFound"></span></span>
+            <span><b id="memoryTime">0:00</b></span>
+            <span class="muted" id="memoryBest"></span>
+          </div>
+        </div>
+        <div class="memory-grid" id="memoryGrid"></div>
+        <p class="game-win hidden" id="memoryWin"></p>
+      </div>
+    </section>
+
+    <!-- Arşiv: arama, filtre, sonsuz kaydırma -->
+    <section id="sec-archive" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="archiveTitle"></h3>
+        <p class="muted" id="archiveCount"></p>
+      </div>
+      <div class="archive-tools">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <input type="search" id="searchInput" class="input" autocomplete="off">
+        </div>
+        <div class="chips" role="group" aria-label="Filter">
+          <button type="button" class="chip" data-filter="all" data-i18n="filterAll"></button>
+          <button type="button" class="chip" data-filter="image" data-i18n="filterImage"></button>
+          <button type="button" class="chip" data-filter="video" data-i18n="filterVideo"></button>
+        </div>
+      </div>
+      <div id="archiveGrid" class="grid"></div>
+      <p id="archiveEmpty" class="empty hidden"></p>
+      <div class="more">
+        <button type="button" id="moreBtn" class="btn hidden"></button>
+      </div>
+      <nav class="pager" id="pager" aria-label="Pages"></nav>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span><span data-i18n="footerSource"></span> <a href="https://science.nasa.gov/wp-json/wp/v2/apod-basic/" target="_blank" rel="noopener">NASA Science APOD API</a></span>
+      <span class="muted" data-i18n="footerNote"></span>
+    </div>
+  </footer>
+
+  <!-- Detay penceresi: kartlara tıklayınca açılır -->
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-labelledby="lbTitle" hidden>
+    <div class="lb-top">
+      <div class="lb-heading">
+        <p class="lb-date"><span id="lbDate"></span> <span class="lb-counter" id="lbCounter"></span></p>
+        <p class="lb-title" id="lbTitle"></p>
+      </div>
+      <div class="lb-tools">
+        <button type="button" id="lbZoomOut" class="icon-btn" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
+        <span class="lb-zoom" id="lbZoomLevel">100%</span>
+        <button type="button" id="lbZoomIn" class="icon-btn" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
+        <button type="button" id="lbReset" class="icon-btn" aria-label="Reset"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg></button>
+        <button type="button" id="lbInfoBtn" class="icon-btn" aria-pressed="true" data-i18n-label="infoToggle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
+        <button type="button" id="lbClose" class="icon-btn lb-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    </div>
+
+    <div class="lb-body" id="lbBody">
+      <div class="lb-stage-wrap">
+        <div class="lb-stage" id="lbStage"></div>
+        <button type="button" id="lbPrev" class="lb-arrow lb-arrow-prev" data-i18n-label="prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button type="button" id="lbNext" class="lb-arrow lb-arrow-next" data-i18n-label="next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+
+      <aside class="lb-info" id="lbInfo">
+        <p class="lb-meta" id="lbMeta"></p>
+        <h2 id="lbInfoTitle"></h2>
+        <p class="credit" id="lbCredit"></p>
+        <p class="lb-text" id="lbText"></p>
+        <dl class="details" id="lbDetails"></dl>
+        <div class="actions">
+          <button type="button" id="lbFav" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.4-9.3-9A5.4 5.4 0 0 1 12 6a5.4 5.4 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9z"/></svg>
+            <span id="lbFavLabel"></span>
+          </button>
+          <button type="button" id="lbDownload" class="btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+            <span data-i18n="download"></span>
+          </button>
+          <a id="lbNasa" class="btn btn-ghost" target="_blank" rel="noopener">
+            <span data-i18n="nasaPage"></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg>
+          </a>
+          <button type="button" id="lbOpenMain" class="btn btn-ghost" data-i18n="openInMain"></button>
+        </div>
+      </aside>
+    </div>
+    <p class="lb-hint" data-i18n="lbHint"></p>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+  <script src="games.js"></script>
+</body>
+</html>
