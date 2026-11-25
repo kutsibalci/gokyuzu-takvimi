@@ -6,7 +6,22 @@
   <meta name="google" content="notranslate">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gökyüzü Takvimi</title>
-  <meta name="description" content="NASA'nın Günün Astronomi Fotoğrafı (APOD) arşivini keşfedin.">
+  <meta name="description" content="Doğduğun gün NASA uzaydan hangi fotoğrafı paylaştı? NASA'nın 1995'ten bu yana her gün yayınladığı astronomi fotoğrafları: doğum günü kartın, arşiv takvimi, yapboz ve hafıza oyunları.">
+  <!-- Bağlantı paylaşılınca (LinkedIn, WhatsApp, X...) görünen önizleme -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Gökyüzü Takvimi">
+  <meta property="og:title" content="Gökyüzü Takvimi – Doğduğun gün NASA uzaydan hangi fotoğrafı paylaştı?">
+  <meta property="og:description" content="NASA'nın 1995'ten bu yana her gün yayınladığı astronomi fotoğrafları: doğum günü kartın, arşiv takvimi, yapboz ve hafıza oyunları.">
+  <meta property="og:url" content="https://kutsibalci.github.io/gokyuzu-takvimi/">
+  <meta property="og:image" content="https://kutsibalci.github.io/gokyuzu-takvimi/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Gökyüzü Takvimi: Doğduğun gün NASA uzaydan hangi fotoğrafı paylaştı?">
+  <meta property="og:locale" content="tr_TR">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Gökyüzü Takvimi – Doğduğun gün NASA uzaydan hangi fotoğrafı paylaştı?">
+  <meta name="twitter:description" content="NASA'nın 1995'ten bu yana her gün yayınladığı astronomi fotoğrafları: doğum günü kartın, arşiv takvimi, yapboz ve hafıza oyunları.">
+  <meta name="twitter:image" content="https://kutsibalci.github.io/gokyuzu-takvimi/og-image.jpg">
   <meta name="theme-color" content="#0b0d12">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
@@ -40,6 +55,7 @@
         <button type="button" data-target="sec-favorites" data-i18n="navFavorites"></button>
         <button type="button" data-target="sec-games" data-i18n="navGames"></button>
         <button type="button" data-target="sec-archive" data-i18n="navArchive"></button>
+        <button type="button" data-target="sec-library" data-i18n="navLibrary"></button>
       </nav>
 
       <div class="top-actions">
@@ -120,6 +136,7 @@
           <p class="meta">
             <span id="apodDate"></span>
             <span id="apodType" class="badge hidden"></span>
+            <span id="apodKind" class="badge kind-badge hidden"></span>
           </p>
           <h2 id="apodTitle"></h2>
           <p class="credit" id="apodCredit"></p>
@@ -203,6 +220,12 @@
         <span class="progress-text" id="birthdayProgressText"></span>
       </div>
       <p id="birthdaySummary" class="muted summary"></p>
+      <div id="birthdayActions" class="birthday-actions hidden">
+        <button type="button" class="btn btn-primary" id="cardBtn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m4 15 4.5-4.5 4 4L15 12l5 5"/><circle cx="15" cy="7.5" r="1.5"/></svg>
+          <span data-i18n="cardButton"></span>
+        </button>
+      </div>
       <div id="birthdayGrid" class="grid"></div>
     </section>
 
@@ -257,6 +280,7 @@
               <button type="button" class="chip" data-size="3">3 × 3</button>
               <button type="button" class="chip active" data-size="4">4 × 4</button>
             </div>
+            <button type="button" class="btn btn-daily" id="puzzleDaily"></button>
             <button type="button" class="btn" id="puzzleToday" data-i18n="puzzleToday"></button>
             <button type="button" class="btn" id="puzzleRandom" data-i18n="puzzleRandom"></button>
           </div>
@@ -328,6 +352,28 @@
       <nav class="pager" id="pager" aria-label="Pages"></nav>
     </section>
 
+    <!-- NASA görsel arşivi (ikinci API: images-api.nasa.gov) -->
+    <section id="sec-library" class="block anchor reveal">
+      <div class="block-head">
+        <h3 data-i18n="libTitle"></h3>
+        <p class="muted" id="libCount"></p>
+      </div>
+      <p class="muted lib-intro" data-i18n="libText"></p>
+      <form class="lib-form" id="libForm" role="search">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <input type="search" id="libInput" class="input" autocomplete="off" enterkeyhint="search">
+        </div>
+        <button type="submit" class="btn btn-primary" id="libSearchBtn" data-i18n="libSearch"></button>
+      </form>
+      <div class="chips lib-chips" id="libChips" role="group" aria-label="Topics"></div>
+      <div id="libGrid" class="grid"></div>
+      <p id="libEmpty" class="empty hidden"></p>
+      <div class="more">
+        <button type="button" id="libMore" class="btn hidden"></button>
+      </div>
+    </section>
+
   </main>
 
   <footer class="footer">
@@ -389,7 +435,43 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+
+  <!-- Doğum günü kartı penceresi -->
+  <div class="card-modal" id="cardModal" hidden role="dialog" aria-modal="true" aria-labelledby="cardModalTitle">
+    <div class="card-modal-box">
+      <div class="card-modal-head">
+        <h3 id="cardModalTitle" data-i18n="cardTitle"></h3>
+        <button type="button" id="cardClose" class="icon-btn" data-i18n-label="close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="card-modal-body">
+        <div class="card-preview" id="cardPreview">
+          <canvas id="cardCanvas" width="1080" height="1350"></canvas>
+        </div>
+        <div class="card-side">
+          <p class="muted small" data-i18n="cardHelp"></p>
+          <div class="card-pick">
+            <button type="button" class="icon-btn" id="cardPrev" aria-label="‹"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+            <span id="cardPickLabel"></span>
+            <button type="button" class="icon-btn" id="cardNext" aria-label="›"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+          </div>
+          <div class="game-actions">
+            <button type="button" class="btn btn-primary" id="cardDownload">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+              <span data-i18n="cardDownload"></span>
+            </button>
+            <button type="button" class="btn" id="cardShare">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.6M8.2 13.2l7.6 4.6"/></svg>
+              <span data-i18n="cardShare"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="script.js"></script>
+  <script src="card.js"></script>
+  <script src="library.js"></script>
   <script src="games.js"></script>
 </body>
 </html>

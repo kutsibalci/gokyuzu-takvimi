@@ -12,7 +12,8 @@ NASA'nın **APOD (Astronomy Picture of the Day / Günün Astronomi Fotoğrafı)*
 - Türkçe modda açıklamanın Türkçeye çevrilmesi (Chrome'un cihaz içi çevirisiyle)
 
 **Oyunlar ve rozetler**
-- Kaydırmalı yapboz: üstteki ya da rastgele bir NASA fotoğrafı 3×3 veya 4×4 parçaya bölünür; tıklama veya ok tuşlarıyla oynanır, her zaman çözülebilir karıştırılır, hamle/süre rekoru saklanır
+- Yapboz: üstteki ya da rastgele bir NASA fotoğrafı 3×3 veya 4×4 parçaya bölünür. İki mod var: "Yer değiştir" (parçayı sürükleyip bırak ya da iki parçaya sırayla tıkla) ve klasik "Kaydır" (tıklama, sürükleme veya ok tuşları). Hamle/süre rekoru saklanır
+- Günün meydan okuması: herkes aynı gün aynı fotoğrafı aynı karışık hâliyle çözer (karıştırma tarihe bağlı), sonuç "Gökyüzü Yapbozu #12 – 18 hamle" gibi bir metinle paylaşılır. `#yapboz` bağlantısı doğrudan bu yapbozu açar
 - Hafıza kartları: arşivden rastgele fotoğraflarla 12 veya 16 kartlık eşleştirme oyunu; oyun bitince kartlara tıklayıp fotoğrafları inceleyebilirsiniz
 - Günlük seri: siteye üst üste girilen gün sayısı
 - 10 rozet (seri, keşif, favori, doğum günü ve oyun başarıları); açılınca bildirim ve konfeti
@@ -27,8 +28,11 @@ NASA'nın **APOD (Astronomy Picture of the Day / Günün Astronomi Fotoğrafı)*
 - Geçmiş yıllarda bu tarih: seçilen günün önceki 5 yıldaki fotoğrafları
 - Arşiv takvimi: bir ayın tüm günleri küçük resimlerle, ay ay gezinme
 - Doğum günü fotoğrafları: doğum tarihine göre 1995'ten bu yana her doğum gününün fotoğrafı (29 Şubat doğumlular için artık olmayan yıllarda 28 Şubat)
+- Doğum günü kartı: seçilen doğum günü fotoğrafından sosyal medyaya uygun (1080×1350) bir kart resmi oluşturulur; indirilebilir, telefonda doğrudan paylaşılabilir
 - Arşiv: sayfa numaralarıyla gezinme (sayfa başına 20 fotoğraf, sayfaya git kutusu), başlık ve açıklamada arama, fotoğraf / video filtresi
 - Detay penceresi: herhangi bir karta (arşiv, takvim, doğum günü, favoriler) tıklayınca fotoğraf ve bilgileri tam ekran açılır; oklarla aynı listede ilerlenir, arşivde sayfa sonuna gelince bir sonraki sayfaya geçilir, X veya Esc ile kapanır
+- NASA görsel arşivi ("Keşfet"): ikinci bir NASA API'siyle 140.000'den fazla görselde arama (Hubble, James Webb, Mars, Apollo, Uzay İstasyonu...). Hazır konu butonları, "daha fazla göster", Türkçe yazılan yaygın kelimelerin İngilizceye çevrilmesi
+- Çizim / Simülasyon etiketi: gerçek fotoğraf olmayan görseller (sanatçı çizimleri, bilgisayar simülasyonları) kartlarda ve detaylarda işaretlenir
 - Favoriler
 
 **Arayüz**
@@ -40,11 +44,14 @@ NASA'nın **APOD (Astronomy Picture of the Day / Günün Astronomi Fotoğrafı)*
 - Önbellek: çekilen sayfalar tarayıcıda saklanır, ikinci açılışta anında gelir
 - Uygulama olarak yükleme (PWA): `manifest.webmanifest` + `sw.js`. Site bir sunucudan açılınca telefona ve bilgisayara uygulama gibi kurulabilir ve daha önce görülen günler çevrimdışı da açılır. Dosya çift tıklanarak açıldığında bu kısım devre dışıdır.
 
-## Kullanılan API
+## Kullanılan API'ler
 - **NASA Science APOD API:** `https://science.nasa.gov/wp-json/wp/v2/apod-basic/?page=1`
 - Her sayfa en yeniden eskiye 25 günü döndürür. Kullanılan parametre: `page`
 - Kullanılan alanlar: `date`, `title`, `explanation`, `alt`, `copyright`, `credit`, `media_type`, `hdurl`, `url`, `basic_html` (video dosyası / YouTube bağlantısı için)
 - API anahtarı gerektirmez.
+
+**NASA Image and Video Library API:** https://images-api.nasa.gov/search?q=hubble&media_type=image
+Keşfet bölümünde kullanılır. Parametreler: q, media_type, page, page_size. Kullanılan alanlar: title, description, date_created, center, keywords, nasa_id, photographer/secondary_creator ve görselin boyutları (thumb, medium, large). API anahtarı gerektirmez.
 
 > Not: Eski `api.nasa.gov/planetary/apod` adresi şu an gerçek fotoğraf yerine NASA logosu döndürdüğü için NASA'nın yeni APOD adresi kullanıldı.
 
@@ -66,7 +73,10 @@ NASA'nın metinleri İngilizcedir. Türkçe modda "Türkçeye çevir" butonuna b
 | `index.html` | Sayfa yapısı |
 | `style.css` | Tasarım, temalar ve animasyonlar |
 | `script.js` | API istekleri, dil desteği ve uygulama mantığı |
-| `games.js` | Yapboz, hafıza oyunu, günlük seri, rozetler, yıldızlı arka plan ve konfeti |
+| `games.js` | Yapboz, günün meydan okuması, hafıza oyunu, günlük seri, rozetler, yıldızlı arka plan ve konfeti |
+| `library.js` | NASA görsel arşivinde arama (ikinci API) |
+| `card.js` | Doğum günü kartı (canvas ile resim oluşturma, indirme, paylaşma) |
+| `og-image.jpg` | Bağlantı paylaşılınca görünen önizleme resmi (LinkedIn, WhatsApp, X) |
 | `manifest.webmanifest` | Uygulama olarak kurulma bilgileri |
 | `sw.js` | Çevrimdışı çalışma ve önbellek (service worker) |
 | `icons/` | Uygulama ikonları |

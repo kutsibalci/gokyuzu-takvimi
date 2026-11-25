@@ -7,6 +7,8 @@
 // =============================================
 
 const PROGRESS_KEY = "apodProgress";
+const DAILY_START = "2026-11-25"; // günlük meydan okuma #1'in tarihi
+const startHash = INITIAL_HASH; // script.js açılışta okur, sonra adres tarihe çevrilir (#yapboz bağlantısı)
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- Metinler (script.js'teki TEXTS'e eklenir) ----------
@@ -52,6 +54,16 @@ Object.assign(TEXTS.tr, {
   videoSwapped: "Üstteki gün bir video, bunun yerine rastgele bir fotoğraf seçildi.",
   tile: (n) => `Parça ${n}`,
   hiddenCard: "Kapalı kart",
+  dailyBtn: (no) => `Günün meydan okuması #${no}`,
+  dailyBtnDone: (no) => `Günün meydan okuması #${no} ✓`,
+  dailyHelp:
+    "Bugün herkes aynı fotoğrafı, aynı karışık hâliyle çözüyor. İlk çözüşün sonucun olarak kaydedilir; sonucu paylaşıp arkadaşlarınla karşılaştır.",
+  dailyWin: (no, moves, time) => `Günün meydan okuması #${no} tamam: ${moves} hamle, ${time}.`,
+  dailyDone: (moves, time) => `Bugünkü sonucun: ${moves} hamle · ${time}`,
+  dailyShare: "Sonucu paylaş",
+  dailyShareText: (no, moves, time, url) => `Gökyüzü Yapbozu #${no} 🧩\n4×4 · ${moves} hamle · ${time}\nSen kaç hamlede çözersin? ${url}#yapboz`,
+  dailyCopied: "Sonuç kopyalandı, istediğin yere yapıştırabilirsin",
+  dailyCopyFailed: "Sonuç kopyalanamadı",
   badges: {
     streak3: ["Düzenli gözlemci", "3 gün üst üste siteye gir"],
     streak7: ["Haftalık gözlemci", "7 gün üst üste siteye gir"],
@@ -108,6 +120,16 @@ Object.assign(TEXTS.en, {
   videoSwapped: "The featured day is a video, so a random photo was picked instead.",
   tile: (n) => `Tile ${n}`,
   hiddenCard: "Hidden card",
+  dailyBtn: (no) => `Daily challenge #${no}`,
+  dailyBtnDone: (no) => `Daily challenge #${no} ✓`,
+  dailyHelp:
+    "Everyone solves the same photo with the same shuffle today. Your first solve is saved as your result; share it and compare with friends.",
+  dailyWin: (no, moves, time) => `Daily challenge #${no} done: ${moves} moves, ${time}.`,
+  dailyDone: (moves, time) => `Today's result: ${moves} moves · ${time}`,
+  dailyShare: "Share result",
+  dailyShareText: (no, moves, time, url) => `Sky Puzzle #${no} 🧩\n4×4 · ${moves} moves · ${time}\nCan you beat it? ${url}#yapboz`,
+  dailyCopied: "Result copied, paste it anywhere",
+  dailyCopyFailed: "Couldn't copy the result",
   badges: {
     streak3: ["Regular observer", "Visit 3 days in a row"],
     streak7: ["Weekly observer", "Visit 7 days in a row"],
@@ -148,6 +170,7 @@ function loadProgress() {
     badges: p.badges && typeof p.badges === "object" ? p.badges : {},
     puzzleBest: p.puzzleBest && typeof p.puzzleBest === "object" ? p.puzzleBest : {},
     memoryBest: p.memoryBest && typeof p.memoryBest === "object" ? p.memoryBest : {},
+    daily: p.daily && typeof p.daily === "object" ? p.daily : {}, // tarih -> { no, moves, time }
   };
 }
 
@@ -205,7 +228,7 @@ function checkBadges() {
 
 // Açılan her farklı günü say (rozetler için)
 function trackView(item) {
-  if (!item?.date || progress.viewed.includes(item.date)) return;
+  if (!item?.date || item.library || progress.viewed.includes(item.date)) return;
   progress.viewed.unshift(item.date);
   progress.viewed = progress.viewed.slice(0, 60);
   saveProgress();
@@ -469,6 +492,7 @@ function preloadImage(src, timeout = 9000) {
 const puzzle = {
   mode: loadSetting("apodPuzzleMode", "swap") === "slide" ? "slide" : "swap", // swap: yer değiştir, slide: kaydır
   selected: null, // yer değiştir modunda seçilen parça
+  daily: null, // günün meydan okuması açıksa { no, date }
   n: 4,
   item: null,
   src: "",
@@ -485,6 +509,7 @@ const puzzle = {
 
 async function loadPuzzle(source = "today") {
   const token = ++puzzle.token;
+  if (source !== "daily") exitDaily();
   const board = $("puzzleBoard");
   board.classList.add("loading");
   board.innerHTML = `<div class="game-loading">${t("gameLoading")}</div>`;
@@ -498,6 +523,8 @@ async function loadPuzzle(source = "today") {
         if (item) queueToast(t("videoSwapped"), 0);
         item = null;
       }
+    } else if (source === "daily") {
+      item = await dailyItem();
     } else if (source && typeof source === "object") {
       item = source;
     }
@@ -528,6 +555,7 @@ function buildPuzzle() {
   puzzle.selected = null;
   puzzle.peek = false;
   updatePeekButton();
+  updateModeUi();
   $("puzzleTitle").textContent = displayText(puzzle.item).title;
   $("puzzleTitle").lang = displayText(puzzle.item).translated ? "tr" : "en";
 
@@ -596,11 +624,15 @@ function shufflePuzzle() {
   $("puzzleBoard").classList.remove("solved");
   $("puzzleWin").classList.add("hidden");
   setSelected(null);
+  if (puzzle.daily) renderPuzzleWin(); // bugünkü sonuç varsa göster
   if (puzzle.mode === "swap") {
-    // Yer değiştir: parçalar tamamen rastgele dağılır (her dizilim çözülebilir)
+    // Yer değiştir: parçalar tamamen rastgele dağılır (her dizilim çözülebilir).
+    // Günün meydan okumasında karıştırma tarihe bağlı: herkes aynı dizilimi görür.
+    const rand = puzzle.daily ? seededRandom(`gokyuzu-${puzzle.daily.date}`) : Math.random;
+    puzzle.tiles = Array.from({ length: puzzle.n * puzzle.n }, (_, i) => i);
     do {
       for (let i = puzzle.tiles.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(rand() * (i + 1));
         [puzzle.tiles[i], puzzle.tiles[j]] = [puzzle.tiles[j], puzzle.tiles[i]];
       }
     } while (puzzle.tiles.filter((id, pos) => id === pos).length > 1);
@@ -795,7 +827,8 @@ function slideByKey(key) {
 }
 
 function setPuzzleMode(mode) {
-  if (mode === puzzle.mode) return;
+  if (mode === puzzle.mode && !puzzle.daily) return;
+  exitDaily();
   puzzle.mode = mode;
   saveSetting("apodPuzzleMode", mode);
   updateModeUi();
@@ -805,10 +838,91 @@ function setPuzzleMode(mode) {
 
 function updateModeUi() {
   document.querySelectorAll("[data-mode]").forEach((c) => {
-    c.classList.toggle("active", c.dataset.mode === puzzle.mode);
-    c.setAttribute("aria-pressed", c.dataset.mode === puzzle.mode);
+    c.classList.toggle("active", !puzzle.daily && c.dataset.mode === puzzle.mode);
+    c.setAttribute("aria-pressed", !puzzle.daily && c.dataset.mode === puzzle.mode);
   });
-  $("puzzleHelp").textContent = t(puzzle.mode === "swap" ? "puzzleHelpSwap" : "puzzleHelpSlide");
+  document.querySelectorAll("[data-size]").forEach((c) => {
+    c.classList.toggle("active", !puzzle.daily && Number(c.dataset.size) === puzzle.n);
+  });
+  $("puzzleHelp").textContent = puzzle.daily
+    ? `${t("dailyHelp")} ${t("puzzleHelpSwap")}`
+    : t(puzzle.mode === "swap" ? "puzzleHelpSwap" : "puzzleHelpSlide");
+  updateDailyButton();
+}
+
+// ---- Günün meydan okuması ----
+// Tarihten her seferinde aynı sayı dizisini üreten basit rastgele sayı üreteci
+function seededRandom(text) {
+  let h = 1779033703 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    h = Math.imul(h ^ text.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+const dailyNo = () => Math.max(1, daysBetween(DAILY_START, latestDate) + 1);
+
+// Günün fotoğrafı (video ise en yakın fotoğraflı gün)
+async function dailyItem() {
+  await waitForData();
+  const items = await fetchPage(1);
+  const item = items.find((i) => i.image && i.mediaType === "image");
+  if (!item) throw new Error(t("gameLoadFailed"));
+  puzzle.daily = { no: dailyNo(), date: latestDate };
+  puzzle.mode = "swap";
+  puzzle.n = 4;
+  updateModeUi();
+  return item;
+}
+
+function startDaily() {
+  started.puzzle = true;
+  loadPuzzle("daily");
+}
+
+function exitDaily() {
+  if (!puzzle.daily) return;
+  puzzle.daily = null;
+  puzzle.mode = loadSetting("apodPuzzleMode", "swap") === "slide" ? "slide" : "swap";
+  updateModeUi();
+}
+
+function updateDailyButton() {
+  const btn = $("puzzleDaily");
+  if (!latestDate) return;
+  const no = dailyNo();
+  const done = Boolean(progress.daily[latestDate]);
+  btn.textContent = done ? t("dailyBtnDone")(no) : t("dailyBtn")(no);
+  btn.classList.toggle("active", Boolean(puzzle.daily));
+  btn.setAttribute("aria-pressed", Boolean(puzzle.daily));
+}
+
+async function shareDaily() {
+  const r = puzzle.daily && progress.daily[puzzle.daily.date];
+  if (!r) return;
+  const url = typeof siteUrl === "function" ? siteUrl() : location.href.split("#")[0];
+  const text = t("dailyShareText")(r.no, r.moves, formatTime(r.time), url);
+  // Telefonda paylaşım menüsü, bilgisayarda panoya kopyala
+  if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(t("dailyCopied"));
+  } catch {
+    toast(t("dailyCopyFailed"));
+  }
 }
 
 function startPuzzleTimer() {
@@ -850,6 +964,17 @@ function puzzleSolved() {
   setSelected(null);
   markMovable();
 
+  if (puzzle.daily) {
+    const key = puzzle.daily.date;
+    if (!progress.daily[key]) {
+      progress.daily[key] = { no: puzzle.daily.no, moves: puzzle.moves, time };
+      // sadece son 60 günü tut
+      const keys = Object.keys(progress.daily).sort();
+      keys.slice(0, Math.max(0, keys.length - 60)).forEach((k) => delete progress.daily[k]);
+      saveProgress();
+    }
+    updateDailyButton();
+  }
   const best = progress.puzzleBest[puzzleBestKey()];
   const record = !best || puzzle.moves < best.moves || (puzzle.moves === best.moves && time < best.time);
   if (record) {
@@ -866,11 +991,32 @@ function puzzleSolved() {
 
 function renderPuzzleWin() {
   const box = $("puzzleWin");
-  if (!puzzle.win) return box.classList.add("hidden");
-  const { moves, time, record } = puzzle.win;
-  box.textContent = `${t("puzzleWin")(moves, formatTime(time))}${record ? ` ${t("newRecord")}` : ""}`;
+  const daily = puzzle.daily && progress.daily[puzzle.daily.date];
+  if (!puzzle.win && !daily) return box.classList.add("hidden");
+  box.innerHTML = "";
+  const text = document.createElement("span");
+  if (puzzle.daily && puzzle.win) {
+    text.textContent = t("dailyWin")(puzzle.daily.no, puzzle.win.moves, formatTime(puzzle.win.time));
+    if (daily && (daily.moves !== puzzle.win.moves || daily.time !== puzzle.win.time)) {
+      text.textContent += ` ${t("dailyDone")(daily.moves, formatTime(daily.time))}`;
+    }
+  } else if (puzzle.daily) {
+    text.textContent = t("dailyDone")(daily.moves, formatTime(daily.time));
+  } else {
+    const { moves, time, record } = puzzle.win;
+    text.textContent = `${t("puzzleWin")(moves, formatTime(time))}${record ? ` ${t("newRecord")}` : ""}`;
+  }
+  box.appendChild(text);
+  if (daily) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-primary btn-sm";
+    btn.textContent = t("dailyShare");
+    btn.addEventListener("click", shareDaily);
+    box.appendChild(btn);
+  }
   box.classList.remove("hidden");
-  replay(box, "pop");
+  if (puzzle.win) replay(box, "pop");
 }
 
 function updatePeekButton() {
@@ -879,7 +1025,8 @@ function updatePeekButton() {
 }
 
 function setPuzzleSize(n) {
-  if (n === puzzle.n) return;
+  if (n === puzzle.n && !puzzle.daily) return;
+  exitDaily();
   puzzle.n = n;
   document.querySelectorAll("[data-size]").forEach((c) => c.classList.toggle("active", Number(c.dataset.size) === n));
   if (puzzle.item) buildPuzzle();
@@ -892,6 +1039,7 @@ function setupPuzzle() {
   });
   $("puzzleShuffle").addEventListener("click", shufflePuzzle);
   $("puzzleToday").addEventListener("click", () => loadPuzzle("today"));
+  $("puzzleDaily").addEventListener("click", () => loadPuzzle("daily"));
   $("puzzleRandom").addEventListener("click", () => loadPuzzle("random"));
   $("puzzleOpen").addEventListener("click", () => puzzle.item && openViewer(puzzle.item));
   $("puzzlePeek").addEventListener("click", () => {
@@ -1136,15 +1284,23 @@ function showGame(name) {
 function startGame(name) {
   if (started[name]) return;
   started[name] = true;
-  if (name === "puzzle") loadPuzzle("today");
+  if (name === "puzzle") loadPuzzle("daily");
   else newMemoryGame();
 }
 
 // Dil değişince oyun bölümündeki metinleri yenile (script.js'teki applyTexts çağırır)
 function gamesApplyTexts() {
-  document.querySelectorAll("#sec-games [data-i18n], .topnav [data-i18n]").forEach((el) => {
-    el.textContent = t(el.dataset.i18n);
+  document
+    .querySelectorAll("#sec-games [data-i18n], .topnav [data-i18n], #cardModal [data-i18n], #birthdayActions [data-i18n]")
+    .forEach((el) => {
+      el.textContent = t(el.dataset.i18n);
+    });
+  document.querySelectorAll("#cardModal [data-i18n-label]").forEach((el) => {
+    el.setAttribute("aria-label", t(el.dataset.i18nLabel));
+    el.title = t(el.dataset.i18nLabel);
   });
+  if (typeof cardApplyTexts === "function") cardApplyTexts();
+  if (typeof libraryApplyTexts === "function") libraryApplyTexts();
   renderStreak();
   renderBadges();
   renderPuzzleBest();
@@ -1152,7 +1308,7 @@ function gamesApplyTexts() {
   updatePeekButton();
   updateModeUi();
   if (puzzle.item) $("puzzleTitle").textContent = displayText(puzzle.item).title;
-  if (puzzle.win) renderPuzzleWin();
+  if (puzzle.win || puzzle.daily) renderPuzzleWin();
   if (memory.win) renderMemoryWin();
   puzzle.els.forEach((el, id) => el.setAttribute("aria-label", t("tile")(id + 1)));
   memory.cards.forEach((c) => setCardOpen(c, c.open));
@@ -1169,8 +1325,14 @@ function setupGames() {
   gamesApplyTexts();
   checkBadges();
 
-  // Oyun, bölüm ekrana gelince yüklensin (açılışta boşuna resim indirilmesin)
+  waitForData().then(updateDailyButton, () => {}); // meydan okuma numarası veri gelince yazılsın
+  // #yapboz bağlantısıyla gelindiyse doğrudan günün meydan okumasını aç
   const section = $("sec-games");
+  if (startHash === "#yapboz") {
+    startDaily();
+    setTimeout(() => section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }), 600);
+  }
+  // Oyun, bölüm ekrana gelince yüklensin (açılışta boşuna resim indirilmesin)
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver(
       (entries) => {

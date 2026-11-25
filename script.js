@@ -11,6 +11,8 @@
 // Türkçe çeviri: Chrome'un tarayıcıya gömülü, cihaz içinde çalışan
 // Translator özelliği kullanılır (ek bir web API'si ya da anahtar gerekmez).
 
+// Sayfa açılırken adresteki # kısmı (ör. #yapboz). Gün gösterilince adres tarihe çevrildiği için baştan saklanır.
+const INITIAL_HASH = location.hash;
 const API_URL = "https://science.nasa.gov/wp-json/wp/v2/apod-basic/";
 const PAGE_SIZE = 25;
 const FIRST_DATE = "1995-06-16"; // APOD'un ilk fotoğrafı
@@ -72,6 +74,15 @@ const TEXTS = {
     downloaded: "İndirme başladı",
     share: "Paylaş",
     linkCopied: "Bağlantı kopyalandı",
+    kindIllustration: "Çizim",
+    kindSimulation: "Simülasyon",
+    kindIllustrationHint: "Bu görsel bir fotoğraf değil; bilimsel bilgilere dayanarak hazırlanmış bir çizim.",
+    kindSimulationHint: "Bu görsel bir fotoğraf değil; bir bilgisayar simülasyonu ya da görselleştirme.",
+    detailKind: "Görsel türü",
+    detailSource: "Kaynak",
+    detailCenter: "NASA merkezi",
+    detailKeywords: "Anahtar kelimeler",
+    librarySource: "NASA Görsel ve Video Arşivi (images.nasa.gov)",
     linkCopiedLocal: "Bağlantı kopyalandı. Site yayına alınınca başkalarıyla da paylaşılabilir.",
     copyFailed: "Bağlantı kopyalanamadı",
     nasaPage: "NASA sayfası",
@@ -168,6 +179,15 @@ const TEXTS = {
     downloaded: "Download started",
     share: "Share",
     linkCopied: "Link copied",
+    kindIllustration: "Illustration",
+    kindSimulation: "Simulation",
+    kindIllustrationHint: "This is not a photograph; it is an illustration based on scientific data.",
+    kindSimulationHint: "This is not a photograph; it is a computer simulation or visualization.",
+    detailKind: "Image type",
+    detailSource: "Source",
+    detailCenter: "NASA center",
+    detailKeywords: "Keywords",
+    librarySource: "NASA Image and Video Library (images.nasa.gov)",
     linkCopiedLocal: "Link copied. It can be shared with others once the site is published.",
     copyFailed: "Could not copy the link",
     nasaPage: "NASA page",
@@ -460,6 +480,34 @@ function normalize(raw) {
   };
 }
 
+// Gerçek fotoğraf değil de çizim/simülasyon mu? APOD bunu genelde başlıkta ya da
+// görsel sahibinde ("Illustration Credit", "Simulation") belirtir; açıklamada ise
+// sadece net ifadelere bakılır ki gerçek fotoğraflar yanlışlıkla etiketlenmesin.
+const KIND_RULES = [
+  [
+    "illustration",
+    /\billustrat|\bartist'?s?\b.*\b(concept|impression)/i,
+    /\b(artist'?s?|artistic)\s+(illustration|concept(ion)?|impression|rendering|depiction|drawing)\b|\b(this|the featured|featured|the above)\s+(\w+\s+)?illustration\b/i,
+  ],
+  ["simulation", /\bsimulat|\bvisualization\b/i, /\b(this|the featured|featured|the above)\s+(\w+\s+){0,2}(simulation|visualization)\b/i],
+];
+
+function mediaKind(item) {
+  if (!item || item.library) return null;
+  const head = `${item.title || ""} ${item.credit || ""}`;
+  for (const [kind, headRule] of KIND_RULES) if (headRule.test(head)) return kind;
+  for (const [kind, , textRule] of KIND_RULES) if (textRule.test(item.explanation || "")) return kind;
+  return null;
+}
+
+function kindLabel(item) {
+  const kind = mediaKind(item);
+  if (!kind) return null;
+  return kind === "illustration"
+    ? { text: t("kindIllustration"), hint: t("kindIllustrationHint") }
+    : { text: t("kindSimulation"), hint: t("kindSimulationHint") };
+}
+
 // HTML içeren metni güvenli şekilde düz yazıya çevir
 function htmlToText(html) {
   const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
@@ -648,7 +696,7 @@ async function translateItem(item, onProgress) {
 
 // Ekranda gösterilecek metinler: Türkçe modda ve çeviri varsa çeviri
 function displayText(item) {
-  if (lang === "tr" && !showOriginal && translations.has(item.date)) {
+  if (lang === "tr" && !showOriginal && !item.library && translations.has(item.date)) {
     return { ...item, ...translations.get(item.date), translated: true };
   }
   return { ...item, translated: false };
@@ -765,6 +813,12 @@ function renderApod(item, dir = 0, animate = true) {
   const badge = $("apodType");
   badge.textContent = t("video");
   badge.classList.toggle("hidden", !isVideo);
+  // Fotoğraf değil de çizim/simülasyonsa belirt
+  const kind = kindLabel(item);
+  const kindBadge = $("apodKind");
+  kindBadge.textContent = kind?.text || "";
+  kindBadge.title = kind?.hint || "";
+  kindBadge.classList.toggle("hidden", !kind);
 
   // Görsel sahibi (bağlantılı)
   const credit = $("apodCredit");
@@ -788,7 +842,8 @@ function renderApod(item, dir = 0, animate = true) {
   $("expandBtn").classList.toggle("hidden", !item.image && !item.videoFile && !item.videoEmbed);
 
   // Detaylar
-  const rows = [[t("detailType"), isVideo ? t("video") : t("image")]];
+  const rows = [[t("detailType"), isVideo ? t("video") : kind ? kind.text : t("image")]];
+  if (kind) rows.push([t("detailKind"), kind.hint]);
   if (item.width && item.height) rows.push([t("detailResolution"), `${item.width} × ${item.height} px`]);
   if (view.alt) rows.push([t("detailAlt"), view.alt]);
   rows.push([t("detailArchive"), t("archiveDay")(daysBetween(FIRST_DATE, item.date) + 1)]);
@@ -913,7 +968,7 @@ function createCard(item, { index = 0, sub = null, context = null } = {}) {
   mediaBox.className = "card-media";
   if (item.image) {
     const img = document.createElement("img");
-    img.src = thumbUrl(item.image);
+    img.src = item.thumb || thumbUrl(item.image);
     img.alt = item.alt || item.title;
     img.loading = "lazy";
     img.decoding = "async";
@@ -925,11 +980,21 @@ function createCard(item, { index = 0, sub = null, context = null } = {}) {
     empty.textContent = t("noImageShort");
     mediaBox.appendChild(empty);
   }
-  if (item.mediaType === "video") {
-    const badge = document.createElement("span");
-    badge.className = "card-badge";
-    badge.textContent = t("video");
-    mediaBox.appendChild(badge);
+  const badges = [];
+  if (item.mediaType === "video") badges.push({ text: t("video") });
+  const kind = kindLabel(item);
+  if (kind) badges.push({ text: kind.text, hint: kind.hint, kind: true });
+  if (badges.length) {
+    const wrap = document.createElement("span");
+    wrap.className = "card-badges";
+    badges.forEach((b) => {
+      const badge = document.createElement("span");
+      badge.className = `card-badge${b.kind ? " kind" : ""}`;
+      badge.textContent = b.text;
+      if (b.hint) badge.title = b.hint;
+      wrap.appendChild(badge);
+    });
+    mediaBox.appendChild(wrap);
   }
   card.appendChild(mediaBox);
 
@@ -1438,7 +1503,7 @@ async function downloadItem(item) {
     const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg").split(";")[0];
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `apod-${item.date}.${ext}`;
+    a.download = item.library ? `nasa-${item.nasaId}.${ext}` : `apod-${item.date}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1503,7 +1568,9 @@ function openViewer(item, context = null) {
   const el = $("lightbox");
   viewer.list = context?.items || null;
   viewer.edge = context?.edge || null;
-  viewer.index = viewer.list ? Math.max(0, viewer.list.findIndex((x) => x.date === item.date)) : 0;
+  // Aynı tarihli farklı öğeler olabilir (NASA görsel arşivi), önce nesnenin kendisini ara
+  const exact = viewer.list ? viewer.list.indexOf(item) : -1;
+  viewer.index = viewer.list ? Math.max(0, exact >= 0 ? exact : viewer.list.findIndex((x) => x.date === item.date)) : 0;
   if (!viewer.open) {
     viewer.open = true;
     viewer.lastFocus = document.activeElement;
@@ -1636,7 +1703,7 @@ function renderViewer(item, dir = 0) {
   }
 
   // Türkçe modda çeviri daha önce açıldıysa burada da otomatik çevir
-  if (lang === "tr" && autoTranslate && !translations.has(item.date)) {
+  if (lang === "tr" && autoTranslate && !item.library && !translations.has(item.date)) {
     translatorState().then((state) => {
       if (state !== "available") return;
       translateItem(item, () => {})
@@ -1655,7 +1722,9 @@ function renderViewerInfo(item) {
   const view = displayText(item);
   const isVideo = item.mediaType === "video";
 
-  $("lbMeta").textContent = `${formatDate(item.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${isVideo ? ` · ${t("video")}` : ""}`;
+  const kind = kindLabel(item);
+  $("lbMeta").textContent = `${formatDate(item.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${isVideo ? ` · ${t("video")}` : ""}${kind ? ` · ${kind.text}` : ""}`;
+  $("lbMeta").title = kind?.hint || "";
   $("lbInfoTitle").textContent = view.title;
 
   const credit = $("lbCredit");
@@ -1681,7 +1750,14 @@ function renderViewerInfo(item) {
   const rows = [];
   if (item.width && item.height) rows.push([t("detailResolution"), `${item.width} × ${item.height} px`]);
   if (view.alt) rows.push([t("detailAlt"), view.alt]);
-  rows.push([t("detailArchive"), t("archiveDay")(daysBetween(FIRST_DATE, item.date) + 1)]);
+  if (kind) rows.push([t("detailKind"), kind.hint]);
+  if (item.library) {
+    rows.push([t("detailSource"), t("librarySource")]);
+    if (item.center) rows.push([t("detailCenter"), item.center]);
+    if (item.keywords?.length) rows.push([t("detailKeywords"), item.keywords.slice(0, 8).join(", ")]);
+  } else {
+    rows.push([t("detailArchive"), t("archiveDay")(daysBetween(FIRST_DATE, item.date) + 1)]);
+  }
   const details = $("lbDetails");
   details.innerHTML = "";
   rows.forEach(([label, value]) => {
@@ -1693,6 +1769,9 @@ function renderViewerInfo(item) {
   });
 
   $("lbNasa").href = item.page;
+  // Favoriler ve "ana sayfada aç" sadece günün fotoğrafları için
+  $("lbFav").classList.toggle("hidden", Boolean(item.library));
+  $("lbOpenMain").classList.toggle("hidden", Boolean(item.library));
   updateViewerFav(false);
 }
 

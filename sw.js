@@ -5,7 +5,7 @@
 // Sadece site bir sunucudan (http/https) açıldığında çalışır.
 // =============================================
 
-const VERSION = "v3";
+const VERSION = "v5";
 const SHELL_CACHE = `apod-shell-${VERSION}`;
 const DATA_CACHE = `apod-data-${VERSION}`;
 const IMAGE_CACHE = `apod-images-${VERSION}`;
@@ -17,6 +17,8 @@ const SHELL = [
   "style.css",
   "script.js",
   "games.js",
+  "card.js",
+  "library.js",
   "manifest.webmanifest",
   "icons/icon-32.png",
   "icons/icon-192.png",
