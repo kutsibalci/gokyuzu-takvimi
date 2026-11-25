@@ -5,7 +5,7 @@
 // Sadece site bir sunucudan (http/https) açıldığında çalışır.
 // =============================================
 
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL_CACHE = `apod-shell-${VERSION}`;
 const DATA_CACHE = `apod-data-${VERSION}`;
 const IMAGE_CACHE = `apod-images-${VERSION}`;
@@ -26,7 +26,11 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)));
+  // cache: "reload" -> dosyalar tarayıcının HTTP önbelleğinden değil, sunucudan alınır
+  // (yoksa yeni sürüm yüklenince eski dosyalar önbelleğe girebiliyordu)
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL.map((url) => new Request(url, { cache: "reload" }))))
+  );
   self.skipWaiting();
 });
 
@@ -57,9 +61,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Sitenin kendi dosyaları: önbellekten hemen ver, arkada güncelle
+  // Sitenin kendi dosyaları: önce sunucuya sor (güncelleme varsa hemen gelsin),
+  // internet yoksa önbellekten ver
   if (url.origin === self.location.origin) {
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+    event.respondWith(siteFile(request));
   }
 });
 
@@ -88,16 +93,20 @@ async function cacheFirst(request, cacheName, maxEntries) {
   return response;
 }
 
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  const network = fetch(request)
-    .then((response) => {
-      if (response.ok) cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => cached);
-  return cached || network;
+async function siteFile(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    // no-cache: dosya değişmediyse sunucu kısa bir "değişmedi" cevabı verir, hızlıdır
+    const response = await fetch(request.url, { cache: "no-cache", credentials: "same-origin" });
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch (err) {
+    const cached =
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (request.mode === "navigate" ? await cache.match("index.html") : undefined);
+    if (cached) return cached;
+    throw err;
+  }
 }
 
 async function trimCache(cache, maxEntries) {
